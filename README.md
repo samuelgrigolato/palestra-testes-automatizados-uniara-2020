@@ -59,16 +59,18 @@ Nota: se você sair do terminal ou abrir outro, terá que repetir o comando `sou
 Instale agora o micro web framework `flask`:
 
 ```
-pip install flask
+pip install flask flask-cors
 ```
 
 Abra o diretório `back` no editor de sua preferência, e crie um arquivo chamado `app.py` com o seguinte conteúdo:
 
 ```python
 from flask import Flask, jsonify
+from flask_cors import CORS
 
 
 app = Flask(__name__)
+CORS(app)
 
 
 @app.route('/ping', methods=['GET'])
@@ -432,3 +434,131 @@ def test_produtos(client):
     }
   ]
 ```
+
+### Front end
+
+Volte para a pasta inicial (saindo da pasta `back`) e crie um projeto em branco usando `create-react-app`:
+
+```
+npx create-react-app front
+```
+
+Navegue para dentro do diretório `front` e execute o seguinte comando para testar se deu certo:
+
+```
+npm start
+```
+
+A página de boas-vindas do CRA deve aparecer no seu navegador.
+
+Execute também a suíte de teste que foi criada junto com o projeto:
+
+```
+npm test
+```
+
+Abra o diretório `front` no seu editor e abra o arquivo `src/App.test.js` e veja seu conteúdo. Abra agora o arquivo `src/App.js` e modifique-o para mostrar a lista de produtos do back end:
+
+```js
+import { useEffect, useState } from 'react';
+
+
+function App() {
+  const [ produtos, setProdutos ] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      const resposta = await fetch('http://localhost:5000/produtos');
+      const produtos = await resposta.json();
+      setProdutos(produtos);
+    })();
+  }, []);
+
+  return (
+    <ul>
+      {produtos.map(produto => (
+        <li key={produto.id}>
+          {produto.nome} (R$ {produto.valor - produto.desconto})
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export default App;
+```
+
+Nota: lembre-se de deixar o back end rodando antes de testar o front end.
+
+Se você testar agora o comando `npm test` vai reparar que o teste obviamente quebrou, pois o componente `App` foi completamente modificado. Na tentativa de resolver, no entanto, você vai se deparar com um problema bem chato: como garantir a lista de produtos retornada pela API?
+
+A resposta é que estes testes, chamados de integração/E2E, são complicados de escrever/executar e devem compor a menor parte dos esforços, sendo que a grande maioria pode ser escrita sem se preocupar com serviços externos. Neste caso é possível resolver extraindo a renderização dos produtos para um componente chamado `Produtos`. Comece criando um arquivo chamado `Produtos.js` com o seguinte conteúdo:
+
+```js
+
+function Produtos ({ produtos }) {
+  return (
+    <ul>
+      {produtos.map(produto => (
+        <li key={produto.id}>
+          {produto.nome} (R$ {produto.valor - produto.desconto})
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+
+export default Produtos;
+```
+
+E ajustando o `App.js`:
+
+```js
+import { useEffect, useState } from 'react';
+import Produtos from './Produtos';
+
+
+function App() {
+  const [ produtos, setProdutos ] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      const resposta = await fetch('http://localhost:5000/produtos');
+      const produtos = await resposta.json();
+      setProdutos(produtos);
+    })();
+  }, []);
+
+  return (
+    <Produtos produtos={produtos} />
+  );
+}
+
+export default App;
+```
+
+Dica: antes de continuar garanta que a aplicação esteja funcionando.
+
+O próximo passo é renomear o arquivo `App.test.js` para `Produtos.test.js` e ajustar o teste dentro dele:
+
+```js
+import { render, screen } from '@testing-library/react';
+import Produtos from './Produtos';
+
+test('renderiza um produto', () => {
+  const produtos = [
+    {
+      "id": 1,
+      "nome": "Monitor",
+      "valor": 3510.99,
+      "desconto": 5.00
+    }
+  ];
+  render(<Produtos produtos={produtos} />);
+  const elemento = screen.getByText('Monitor (R$ 3505.99)');
+  expect(elemento).toBeInTheDocument();
+});
+```
+
+O que foi feito aqui é basicamente a criação de um componente puro (Produtos) facilmente testável. Note que mais uma vez a escrita de testes promove escrita de código com maior qualidade.
