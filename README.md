@@ -562,3 +562,97 @@ test('renderiza um produto', () => {
 ```
 
 O que foi feito aqui é basicamente a criação de um componente puro (Produtos) facilmente testável. Note que mais uma vez a escrita de testes promove escrita de código com maior qualidade.
+
+### End-to-end (E2E)
+
+O último passo é testar a comunicação entre o back end e front end. Para isso é necessário executar os dois ao mesmo tempo, colocar o back end em uma situação conhecida (manipulação do banco de dados), exercitar o front end direto no navegador de forma automática e validar os resultados, fechando tudo ao final da execução. Quanta coisa!
+
+Comece criando um diretório `e2e` ao lado dos diretórios `back` e `front`. Abra ele no seu editor. Crie um arquivo `e2e.sh` e dê permissões de execução:
+
+```
+touch e2e.sh
+chmod +x e2e.sh
+```
+
+O primeiro passo é preparar o script para finalizar forçadamente sua execução em caso de erro e cascatear a finalização para todos os processos filhos criados em background:
+
+Atenção: em alguns *shells* a instrução `trap` abaixo pode encerrar sua sessão X/Wayland, execute com cuidado e salve sempre seus arquivos antes de executar código da Internet :).
+
+```sh
+#!/bin/bash
+
+trap "kill 0" EXIT
+
+set -e
+```
+
+Agora é possível inicializar o back end. Lembre-se que por padrão ele vai usar a base de dados `app.db` no diretório ativo. É possível tirar proveito disso, forçar uma chamada ao endpoint `ping` (isso vai causar a inicialização da base) e inserir a massa de dados:
+
+```sh
+#!/bin/bash
+
+trap "kill 0" EXIT
+
+set -e
+
+rm -f app.db
+
+source ../back/venv/bin/activate
+PYTHONPATH=../back python -m flask run &
+sleep 2 # dê um tempo para ele inicializar
+curl http://localhost:5000/ping
+sqlite3 app.db "insert into produtos (id, nome, valor_em_centavos) values (1, 'Bala', 300);"
+
+echo "Testando..."
+sleep 5
+```
+
+Atenção: lembre-se de desligar instâncias do back e front em outros terminais antes de rodar o e2e, para que não haja conflito de portas.
+
+O próximo passo é similar e envolve a subida do front end:
+
+```sh
+# ...
+
+cd ../front
+BROWSER=none npm start &
+cd ../e2e
+sleep 2
+
+echo "Testando..."
+sleep 5
+```
+
+O último passo é a escrita do teste em si. Para isso será utilizada a biblioteca Selenium WebDriver. Comece instalando a dependência via pip (lembre-se de fazer isso com o venv ativado no terminal!):
+
+```
+pip install selenium
+```
+
+Crie agora um arquivo chamado `e2e.py` com o seguinte conteúdo:
+
+```python
+from selenium import webdriver
+
+
+try:
+  driver = webdriver.Firefox()
+  driver.implicitly_wait(2) # segundos
+  driver.get('http://localhost:3000')
+
+  # se o elemento não for encontrado vai dar exceção
+  driver.find_element_by_xpath('//li[contains(text(), "Bala")]')
+
+finally:
+  driver.close()
+```
+
+E chame esse script no arquivo `e2e.sh`:
+
+```sh
+# ...
+
+python e2e.py
+```
+
+Sugestão: force uma falha (trocando o nome do produto no arquivo `e2e.py`, por exemplo) para garantir que está funcionando. Isso vale para qualquer escrita de teste automatizado. Não confie no verde!
